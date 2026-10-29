@@ -1,0 +1,9 @@
+# Rename this file to ".htaccess" and place it in uploads/products/
+# Product listing photos must never execute as code.
+<FilesMatch "\.(php|php\d|phtml|pl|py|cgi|sh|asp|aspx|exe)$">
+    Require all denied
+</FilesMatch>
+
+php_flag engine off
+Options -Indexes -ExecCGI
+AddHandler cgi-script .php .php3 .php4 .php5 .phtml .pl .py .cgi

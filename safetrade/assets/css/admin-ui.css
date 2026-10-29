@@ -1,0 +1,74 @@
+/* SafeTrade — Admin UI v1 (deep green + cream + muted gold, matches Home & logo) */
+:root{--ad-bg:#FBF7EF;--ad-card:#F9F5EA;--ad-green:#155943;--ad-dark:#092C21;--ad-gold:#C6871F;--ad-line:rgba(22,31,22,.10);--ad-mute:#5A6252;--ad-sh:0 1px 2px rgba(9,44,33,.05),0 12px 28px -18px rgba(9,44,33,.28);}
+body{background:var(--ad-bg)!important;}
+
+/* ---------- Sidebar ---------- */
+body .admin-app{grid-template-columns:260px minmax(0,1fr);}
+body .admin-app.sidebar-collapsed{grid-template-columns:84px minmax(0,1fr);}
+body .admin-side{padding:20px 16px;overflow-y:auto;background:radial-gradient(360px 240px at 0% 0%,rgba(255,255,255,.10),transparent 62%),radial-gradient(300px 220px at 100% 100%,rgba(198,135,31,.18),transparent 65%),linear-gradient(190deg,#155943 0%,#0E3D2E 55%,#092C21 100%);}
+body .ad-logo-row{padding:4px 4px 20px;}
+body .ad-logo-text{font-size:21px;font-weight:700;}
+body .ad-logo-text .seal{width:34px;height:34px;background:rgba(255,255,255,.12);border:1px solid rgba(255,255,255,.25);}
+body .admin-nav{gap:4px;}
+body .admin-nav::before{content:"ADMIN CONSOLE";font-size:10.5px;font-weight:800;letter-spacing:.12em;color:rgba(251,247,239,.45);padding:0 12px 8px;}
+body .admin-link{padding:8px 10px;gap:12px;font-size:14.5px;font-weight:600;border-radius:14px;}
+body .admin-link svg{box-sizing:content-box;width:18px;height:18px;padding:9px;border-radius:11px;background:rgba(255,255,255,.08);}
+body .admin-link:hover:not(.active){background:rgba(255,255,255,.09);transform:none;}
+body .admin-link:hover:not(.active) svg{background:rgba(255,255,255,.16);}
+body .admin-link.active{background:linear-gradient(90deg,rgba(255,255,255,.20),rgba(255,255,255,.07));box-shadow:inset 0 0 0 1px rgba(255,255,255,.12);}
+body .admin-link.active svg{background:var(--ad-gold);color:#092C21;box-shadow:0 4px 12px rgba(0,0,0,.3);}
+body .admin-link .count{background:#E3B055;color:#092C21;}
+body .admin-foot{margin:0;padding:14px;border-radius:16px;background:rgba(0,0,0,.18);border:1px solid rgba(255,255,255,.10);}
+body .admin-foot a{display:inline-block;margin-top:8px;padding:6px 14px;border-radius:999px;background:rgba(255,255,255,.10);border:1px solid rgba(255,255,255,.16);}
+body .admin-divider{display:none;}
+body .admin-app.sidebar-collapsed .admin-nav::before{display:none;}
+body .admin-app.sidebar-collapsed .admin-link{padding:6px;}
+
+/* ---------- Page header ---------- */
+body .admin-main{padding:30px 40px 72px;max-width:1500px;}
+body .admin-topbar{padding-bottom:18px;margin-bottom:26px;border-bottom:1px solid var(--ad-line);}
+body .admin-topbar h1{font-size:30px;}
+body .admin-topbar .sub{font-size:13.5px;}
+
+/* ---------- Stat cards with icons ---------- */
+body .stat-card{background:var(--ad-card);border:1px solid var(--ad-line);border-radius:20px;padding:22px 24px;box-shadow:var(--ad-sh);}
+body .stat-card::before{content:"📊";left:auto;top:18px;right:20px;bottom:auto;width:42px;height:42px;border-radius:13px;background:#E4EFE7;display:flex;align-items:center;justify-content:center;font-size:19px;}
+body .stat-card:nth-child(1)::before{content:"👥";}
+body .stat-card:nth-child(2)::before{content:"✅";}
+body .stat-card:nth-child(3)::before{content:"🪪";background:#F5E6C2;}
+body .stat-card:nth-child(4)::before{content:"🚩";background:#F8E8DF;}
+body .stat-card:nth-child(5)::before{content:"🛍️";}
+body .stat-card:nth-child(6)::before{content:"🏘️";}
+body .stat-card:nth-child(7)::before{content:"🤝";background:#F5E6C2;}
+body .stat-card:nth-child(8)::before{content:"⚙️";background:#ECE2CC;}
+body .stat-card .label{font-size:10.5px;}
+body .stat-card .value{font-size:34px;font-weight:700;margin-top:14px;}
+body .stat-card:hover{transform:translateY(-3px);box-shadow:0 2px 4px rgba(9,44,33,.08),0 22px 38px -18px rgba(9,44,33,.35);}
+
+/* ---------- Panels & tables ---------- */
+body .panel{background:var(--ad-card);border:1px solid var(--ad-line);border-radius:22px;padding:26px;box-shadow:var(--ad-sh);}
+body .panel h2{font-size:19px;display:flex;align-items:center;gap:10px;}
+body .panel h2::before{content:"";width:4px;height:18px;border-radius:4px;background:linear-gradient(#E3B055,#C6871F);}
+body .data-table th{background:#EFE8D6;color:var(--ad-mute);padding:12px;font-size:10.5px;}
+body .data-table th:first-child{border-radius:10px 0 0 10px;}
+body .data-table th:last-child{border-radius:0 10px 10px 0;}
+body .data-table td{padding:15px 12px;}
+body .data-table tbody tr:hover{background:rgba(21,89,67,.06);}
+body .data-table td strong{font-weight:700;}
+body .pill{padding:5px 12px;}
+body .btn-sm{padding:8px 15px;background:#fff;border-color:var(--ad-line);}
+body .btn-sm:hover{background:var(--ad-green);border-color:var(--ad-green);color:#fff;}
+body .btn-sm.danger{color:#8C331F;}
+body .btn-sm.danger:hover{background:#B3452F;border-color:#B3452F;color:#fff;}
+body .search-row input,body .search-row select{background:#fff;border-radius:999px;padding:12px 18px;}
+body .search-row .btn-sm{background:var(--ad-green);color:#fff;border-color:var(--ad-green);}
+body .pagination a.active{background:var(--ad-green);}
+body .empty-state{background:#F1EBDA;}
+
+/* ---------- Mobile ---------- */
+@media(max-width:900px){body .admin-app,body .admin-app.sidebar-collapsed{grid-template-columns:84px minmax(0,1fr);}body .admin-nav::before{display:none;}body .admin-link{padding:6px;}body .admin-main{padding:22px 16px 60px;}}
+@media(max-width:640px){body .stat-cards{grid-template-columns:1fr 1fr;}body .stat-card .value{font-size:26px;}body .stat-card::before{width:34px;height:34px;font-size:15px;right:12px;}}
+
+/* ---------- Logo instead of check mark ---------- */
+body .ad-logo-text .seal{width:42px;height:42px;font-size:0;color:transparent;border:0;border-radius:0;background:url('../../img/logo1.png') center/contain no-repeat;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35));}
+body .ad-logo-text{gap:10px;}

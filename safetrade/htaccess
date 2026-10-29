@@ -1,0 +1,19 @@
+# SafeTrade — root security headers
+<IfModule mod_headers.c>
+    Header set X-Content-Type-Options "nosniff"
+    Header set X-Frame-Options "SAMEORIGIN"
+    Header set Referrer-Policy "strict-origin-when-cross-origin"
+    Header set X-XSS-Protection "1; mode=block"
+</IfModule>
+
+# Block access to dotfiles (.env, .git, etc.)
+<FilesMatch "^\.">
+    Require all denied
+</FilesMatch>
+
+Options -Indexes
+
+# Auto-load assets/css/theme.css on every page (user dashboard, auth, admin)
+<IfModule php_module>
+    php_value auto_prepend_file "C:/xampp/htdocs/safetrade/theme-inject.php"
+</IfModule>

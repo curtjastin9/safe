@@ -1,0 +1,275 @@
+/* =====================================================================
+   SafeTrade — Glass / transparent auth layer
+   Applies to: login, register, register-skip-face, forgot-password,
+   reset-password, unlock-login (OTP / SMTP flows) and the face modal.
+   Loaded from includes/partials/head.php right after app.css.
+   Everything is scoped to .auth-shell / .face-modal so no other page
+   is affected.
+   ===================================================================== */
+
+body .auth-shell{
+  --g-text:#FFFFFF;
+  --g-soft:rgba(255,255,255,.94);
+  --g-faint:rgba(255,255,255,.75);
+  --g-line:rgba(255,255,255,.38);
+  --g-fill:rgba(4,30,21,.38);
+  --g-fill-2:rgba(4,30,21,.52);
+  --g-gold:#FFD98A;
+  color:var(--g-text);
+  background:
+    radial-gradient(640px 640px at 88% -10%,rgba(217,148,42,.34),transparent 65%),
+    radial-gradient(520px 520px at -6% 108%,rgba(255,255,255,.10),transparent 65%),
+    linear-gradient(135deg,#092C21 0%,#155943 55%,#1D7254 100%);
+}
+body .auth-shell::before{
+  background:
+    radial-gradient(420px 420px at 18% 22%,rgba(243,200,119,.16),transparent 70%),
+    radial-gradient(480px 480px at 82% 78%,rgba(120,210,170,.14),transparent 70%) !important;
+  filter:blur(8px);
+  animation:gDrift 14s ease-in-out infinite alternate;
+}
+body .auth-shell::after{
+  content:"";position:absolute;inset:0;pointer-events:none;
+  background:
+    linear-gradient(rgba(255,255,255,.035) 1px,transparent 1px) 0 0/44px 44px,
+    linear-gradient(90deg,rgba(255,255,255,.035) 1px,transparent 1px) 0 0/44px 44px;
+  mask-image:radial-gradient(ellipse at center,#000 30%,transparent 78%);
+  -webkit-mask-image:radial-gradient(ellipse at center,#000 30%,transparent 78%);
+}
+@keyframes gDrift{from{transform:translate3d(-2%,-1%,0) scale(1);}to{transform:translate3d(2%,2%,0) scale(1.06);}}
+
+/* ---------- Transparent glass card ---------- */
+body .auth-shell .auth-card{
+  background:linear-gradient(160deg,rgba(6,36,26,.58),rgba(6,36,26,.38)) !important;
+  border:1px solid var(--g-line) !important;
+  -webkit-backdrop-filter:blur(26px) saturate(1.5);
+  backdrop-filter:blur(26px) saturate(1.5);
+  box-shadow:0 30px 80px rgba(3,20,14,.45),inset 0 1px 0 rgba(255,255,255,.28) !important;
+  color:var(--g-text);
+  text-shadow:0 1px 3px rgba(0,0,0,.35);
+  z-index:1;
+}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){
+  body .auth-shell .auth-card{background:rgba(9,44,33,.82) !important;}
+}
+
+/* ---------- Typography on glass ---------- */
+body .auth-shell .auth-card h1,
+body .auth-shell .auth-card h2,
+body .auth-shell .auth-card h3,
+body .auth-shell .auth-card h4,
+body .auth-shell .auth-card .auth-logo{color:var(--g-text) !important;background:none !important;-webkit-text-fill-color:currentColor;}
+body .auth-shell .auth-card .auth-logo svg{filter:drop-shadow(0 2px 8px rgba(0,0,0,.35));}
+body .auth-shell .auth-card .auth-sub{font-size:14px;}
+body .auth-shell .auth-card .auth-sub,
+body .auth-shell .auth-card p,
+body .auth-shell .auth-card li,
+body .auth-shell .auth-card small,
+body .auth-shell .auth-card .auth-foot,
+body .auth-shell .auth-card .hint,
+body .auth-shell .auth-card .help,
+body .auth-shell .auth-card .muted{color:var(--g-soft) !important;}
+body .auth-shell .auth-card .field label,
+body .auth-shell .auth-card label{color:#fff !important;font-weight:600;font-size:12.5px;}
+body .auth-shell .auth-card strong,
+body .auth-shell .auth-card b{color:var(--g-text);}
+body .auth-shell .auth-card a{color:var(--g-gold);}
+body .auth-shell .auth-card .auth-foot a{color:var(--g-gold) !important;border-bottom-color:transparent;}
+body .auth-shell .auth-card .auth-foot a:hover{border-bottom-color:var(--g-gold);}
+body .auth-shell .auth-card .auth-logo:hover{opacity:.8;}
+
+/* ---------- Transparent inputs ---------- */
+body .auth-shell .auth-card .field input,
+body .auth-shell .auth-card .field select,
+body .auth-shell .auth-card .field textarea,
+body .auth-shell .auth-card input[type=text],
+body .auth-shell .auth-card input[type=email],
+body .auth-shell .auth-card input[type=password],
+body .auth-shell .auth-card input[type=tel],
+body .auth-shell .auth-card input[type=number],
+body .auth-shell .auth-card input[type=file],
+body .auth-shell .auth-card select,
+body .auth-shell .auth-card textarea{
+  background:var(--g-fill) !important;
+  border:1.5px solid var(--g-line) !important;
+  color:var(--g-text) !important;
+  -webkit-backdrop-filter:blur(6px);backdrop-filter:blur(6px);
+  caret-color:var(--g-gold);
+}
+body .auth-shell .auth-card input::placeholder,
+body .auth-shell .auth-card textarea::placeholder{color:var(--g-faint) !important;}
+body .auth-shell .auth-card .field input:hover,
+body .auth-shell .auth-card .field select:hover,
+body .auth-shell .auth-card .field textarea:hover{border-color:rgba(255,255,255,.4) !important;}
+body .auth-shell .auth-card .field input:focus,
+body .auth-shell .auth-card .field select:focus,
+body .auth-shell .auth-card .field textarea:focus,
+body .auth-shell .auth-card input:focus,
+body .auth-shell .auth-card select:focus,
+body .auth-shell .auth-card textarea:focus{
+  background:var(--g-fill-2) !important;
+  border-color:var(--g-gold) !important;
+  box-shadow:0 0 0 4px rgba(243,200,119,.18) !important;
+  color:#fff !important;
+}
+body .auth-shell .auth-card select option{background:#0E3D2E;color:#FBF7EF;}
+body .auth-shell .auth-card input:-webkit-autofill,
+body .auth-shell .auth-card input:-webkit-autofill:hover,
+body .auth-shell .auth-card input:-webkit-autofill:focus{
+  -webkit-text-fill-color:#FBF7EF !important;
+  -webkit-box-shadow:0 0 0 1000px rgba(21,89,67,.55) inset !important;
+  transition:background-color 9999s ease-in-out 0s;
+}
+body .auth-shell .auth-card input[type=checkbox],
+body .auth-shell .auth-card input[type=radio]{accent-color:#F3C877;}
+body .auth-shell .auth-card .pw-toggle{color:#fff;opacity:.75;}
+body .auth-shell .auth-card .pw-toggle:hover{background:rgba(255,255,255,.14);opacity:1;}
+
+/* OTP / code boxes, upload areas and cards that the SMTP / register
+   steps render inside the card */
+body .auth-shell .auth-card [class*="otp"] input,
+body .auth-shell .auth-card input[class*="otp"],
+body .auth-shell .auth-card input[name*="otp"],
+body .auth-shell .auth-card input[name*="code"]{text-align:center;letter-spacing:.35em;font-weight:700;}
+body .auth-shell .auth-card [class*="drop"],
+body .auth-shell .auth-card [class*="upload"],
+body .auth-shell .auth-card [class*="preview"],
+body .auth-shell .auth-card [class*="step"],
+body .auth-shell .auth-card .card{
+  background:var(--g-fill) !important;
+  border-color:var(--g-line) !important;
+  color:var(--g-soft);
+}
+body .auth-shell .auth-card hr{border:0;height:1px;background:var(--g-line);}
+
+/* ---------- Buttons ---------- */
+body .auth-shell .auth-card .btn-primary,
+body .auth-shell .auth-card button[type=submit]:not(.pw-toggle):not(.btn-sm){
+  background:linear-gradient(135deg,#F3C877 0%,#C6871F 100%) !important;
+  color:#2A1B00 !important;
+  border:none;
+  box-shadow:0 10px 26px rgba(0,0,0,.28),inset 0 1px 0 rgba(255,255,255,.45) !important;
+}
+body .auth-shell .auth-card .btn-primary:hover,
+body .auth-shell .auth-card button[type=submit]:not(.pw-toggle):not(.btn-sm):hover{
+  background:linear-gradient(135deg,#F8D58E 0%,#D9A13A 100%) !important;
+  transform:translateY(-2px);
+}
+body .auth-shell .auth-card .btn-primary:disabled{opacity:.55;transform:none;}
+body .auth-shell .auth-card .btn,
+body .auth-shell .auth-card .btn.ghost,
+body .auth-shell .auth-card .btn-sm,
+body .auth-shell .auth-card .face-trigger-btn{
+  background:var(--g-fill) !important;
+  color:var(--g-text) !important;
+  border:1.5px solid var(--g-line) !important;
+  box-shadow:none !important;
+  -webkit-backdrop-filter:blur(8px);backdrop-filter:blur(8px);
+}
+body .auth-shell .auth-card .btn:hover,
+body .auth-shell .auth-card .btn.ghost:hover,
+body .auth-shell .auth-card .btn-sm:hover,
+body .auth-shell .auth-card .face-trigger-btn:hover{
+  background:var(--g-fill-2) !important;
+  border-color:rgba(255,255,255,.5) !important;
+  color:#fff !important;
+}
+body .auth-shell .auth-card .auth-divider{color:var(--g-faint) !important;}
+body .auth-shell .auth-card .auth-divider::before,
+body .auth-shell .auth-card .auth-divider::after{background:var(--g-line);}
+
+/* ---------- Alerts (errors, success, lockout countdown, flashes) ---------- */
+body .auth-shell .auth-card .alert{
+  -webkit-backdrop-filter:blur(10px);backdrop-filter:blur(10px);
+}
+body .auth-shell .auth-card .alert.error{
+  background:rgba(179,69,47,.30) !important;
+  border:1px solid rgba(255,160,135,.40) !important;
+}
+body .auth-shell .auth-card .alert.success{
+  background:rgba(120,210,170,.18) !important;
+  border:1px solid rgba(160,235,200,.38) !important;
+}
+body .auth-shell .auth-card .alert,
+body .auth-shell .auth-card .alert *{color:#FFF3EC !important;}
+body .auth-shell .auth-card .alert.success,
+body .auth-shell .auth-card .alert.success *{color:#E8FFF3 !important;}
+body .auth-shell .auth-card .err-list,
+body .auth-shell .auth-card .err-list li{color:#FFD9CC !important;}
+
+/* ---------- Face verification modal ---------- */
+body .face-modal-backdrop{
+  background:rgba(4,22,16,.50) !important;
+  -webkit-backdrop-filter:blur(12px);backdrop-filter:blur(12px);
+}
+body .face-modal{
+  background:linear-gradient(160deg,rgba(6,36,26,.7),rgba(6,36,26,.5)) !important;
+  text-shadow:0 1px 3px rgba(0,0,0,.35);
+  border:1px solid var(--g-line,rgba(255,255,255,.22));
+  -webkit-backdrop-filter:blur(26px) saturate(1.5);
+  backdrop-filter:blur(26px) saturate(1.5);
+  box-shadow:0 30px 80px rgba(0,0,0,.5),inset 0 1px 0 rgba(255,255,255,.28) !important;
+  color:#FBF7EF;
+}
+body .face-modal h3{color:#FBF7EF !important;}
+body .face-modal .face-sub,
+body .face-modal .face-retry-info{color:rgba(255,255,255,.92) !important;}
+body .face-modal .face-status-pill{color:#F3C877;}
+body .face-modal .face-status-pill.loading::after{border-color:#F3C877;border-right-color:transparent;}
+body .face-modal .face-status-pill.success{color:#7EE2A8;}
+body .face-modal .face-status-pill.error{color:#FFB4A0;}
+body .face-modal .face-progress{background:rgba(255,255,255,.16);}
+body .face-modal .face-progress-fill{background:linear-gradient(90deg,#F3C877,#C6871F);}
+body .face-modal .face-error{background:rgba(179,69,47,.30);color:#FFE3DA;border-left-color:#FF9C84;}
+body .face-modal .face-video-wrap{background:rgba(0,0,0,.35);border:1px solid rgba(255,255,255,.22);}
+body .face-modal .face-modal-actions > button{
+  background:rgba(255,255,255,.10);color:#FBF7EF;border:1.5px solid rgba(255,255,255,.24);
+}
+body .face-modal .face-modal-actions > button:hover{background:rgba(255,255,255,.2);border-color:rgba(255,255,255,.5);}
+
+@media (prefers-reduced-motion:reduce){body .auth-shell::before{animation:none;}}
+@media (max-width:520px){body .auth-shell{padding:18px;}}
+
+/* =====================================================================
+   v3 — bigger logo + layout polish
+   ===================================================================== */
+body .auth-shell .auth-card{padding:44px 42px 38px;max-width:460px;border-radius:30px;}
+
+/* Logo: large, centred brand header */
+body .auth-shell .auth-card .auth-logo{
+  flex-direction:column;justify-content:center;align-items:center;
+  gap:12px;margin-bottom:26px;text-align:center;
+  font-size:26px;letter-spacing:-.01em;
+}
+body .auth-shell .auth-card .auth-logo img,
+body .auth-shell .auth-card .auth-logo svg{
+  width:88px !important;height:88px !important;
+  object-fit:contain;
+  filter:drop-shadow(0 8px 20px rgba(0,0,0,.45));
+}
+body .auth-shell .auth-card h1{text-align:center;font-size:30px;}
+body .auth-shell .auth-card .auth-sub{text-align:center;max-width:360px;margin-left:auto;margin-right:auto;}
+
+/* First / last name row: perfectly level */
+body .auth-shell .auth-card .field-row{display:flex;gap:14px;margin-top:26px;align-items:flex-start;}
+body .auth-shell .auth-card .field-row .field{flex:1;min-width:0;margin-top:0 !important;}
+body .auth-shell .auth-card .field-row + .field{margin-top:16px !important;}
+body .auth-shell .auth-card .field{margin-top:18px;}
+body .auth-shell .auth-card .field:first-of-type{margin-top:18px;}
+body .auth-shell .auth-card .field input,
+body .auth-shell .auth-card .field select{height:50px;margin-top:8px;padding:0 16px;font-size:14.5px;}
+body .auth-shell .auth-card .field textarea{padding:14px 16px;}
+body .auth-shell .auth-card .field label{display:block;letter-spacing:.02em;}
+body .auth-shell .auth-card .pw-field-wrap input{padding-right:48px;}
+
+body .auth-shell .auth-card .btn-primary{height:52px;margin-top:28px;font-size:15px;letter-spacing:.01em;}
+body .auth-shell .auth-card .face-trigger-btn{height:52px;margin-top:24px !important;font-size:15px;}
+body .auth-shell .auth-card .auth-foot{margin-top:20px;font-size:13.5px;}
+
+@media (max-width:520px){
+  body .auth-shell .auth-card{padding:32px 22px 28px;}
+  body .auth-shell .auth-card .auth-logo img,
+  body .auth-shell .auth-card .auth-logo svg{width:72px !important;height:72px !important;}
+  body .auth-shell .auth-card .field-row{flex-direction:column;gap:0;}
+  body .auth-shell .auth-card .field-row .field + .field{margin-top:18px !important;}
+}
