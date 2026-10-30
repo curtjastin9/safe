@@ -932,27 +932,46 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             }
             $productId = 0;
             try {
-                try {
-                    // quantity requires migration_add_product_quantity.sql —
-                    // fall back to the quantity-less insert below (always
-                    // single-unit) if that hasn't been run yet.
-                    $stmt = $conn->prepare(
-                        "INSERT INTO products (seller_id, category_id, title, description, price, quantity, `condition`, location, icon, is_active)
-                         VALUES (?,?,?,?,?,?, 'used', ?, ?, 1)"
-                    );
-                    $stmt->bind_param('iissdiss', $userId, $catId, $title, $desc, $price, $qty, $loc, $icon);
-                    $stmt->execute();
-                } catch (Throwable $e) {
-                    error_log('[SafeTrade] post_item insert with quantity failed, retrying without: ' . $e->getMessage());
-                    $stmt = $conn->prepare(
-                        "INSERT INTO products (seller_id, category_id, title, description, price, `condition`, location, icon, is_active)
-                         VALUES (?,?,?,?,?, 'used', ?, ?, 1)"
-                    );
-                    $stmt->bind_param('iissdss', $userId, $catId, $title, $desc, $price, $loc, $icon);
-                    $stmt->execute();
+                // Explicitly publish the row (is_active=1, is_deleted=0,
+                // is_draft=0) instead of trusting column defaults, so a
+                // new listing always shows in My Listings and the Market.
+                // Older databases may lack quantity / is_draft, so fall
+                // back step by step to the columns that do exist.
+                $attempts = [
+                    ["INSERT INTO products (seller_id, category_id, title, description, price, quantity, `condition`, location, icon, is_active, is_deleted, is_draft)
+                      VALUES (?,?,?,?,?,?, 'used', ?, ?, 1, 0, 0)", 'iissdiss', [$userId, $catId, $title, $desc, $price, $qty, $loc, $icon]],
+                    ["INSERT INTO products (seller_id, category_id, title, description, price, quantity, `condition`, location, icon, is_active, is_deleted)
+                      VALUES (?,?,?,?,?,?, 'used', ?, ?, 1, 0)", 'iissdiss', [$userId, $catId, $title, $desc, $price, $qty, $loc, $icon]],
+                    ["INSERT INTO products (seller_id, category_id, title, description, price, `condition`, location, icon, is_active, is_deleted)
+                      VALUES (?,?,?,?,?, 'used', ?, ?, 1, 0)", 'iissdss', [$userId, $catId, $title, $desc, $price, $loc, $icon]],
+                    ["INSERT INTO products (seller_id, category_id, title, description, price, `condition`, location, icon, is_active)
+                      VALUES (?,?,?,?,?, 'used', ?, ?, 1)", 'iissdss', [$userId, $catId, $title, $desc, $price, $loc, $icon]],
+                ];
+                $lastErr = null;
+                foreach ($attempts as [$sql, $types, $vals]) {
+                    try {
+                        $stmt = $conn->prepare($sql);
+                        $stmt->bind_param($types, ...$vals);
+                        $stmt->execute();
+                        $productId = (int) $conn->insert_id;
+                        $stmt->close();
+                        if ($productId > 0) break;
+                    } catch (Throwable $e) {
+                        $lastErr = $e;
+                        error_log('[SafeTrade] post_item insert attempt failed: ' . $e->getMessage());
+                    }
                 }
-                $productId = (int) $conn->insert_id;
-                $stmt->close();
+                if ($productId <= 0) {
+                    throw $lastErr ?? new RuntimeException('insert returned no id');
+                }
+                // Belt and braces: make sure the saved row is published and
+                // belongs to this seller (ignored if a column is missing).
+                try {
+                    $fix = $conn->prepare('UPDATE products SET is_active=1, is_deleted=0, is_draft=0 WHERE id=? AND seller_id=?');
+                    $fix->bind_param('ii', $productId, $userId);
+                    $fix->execute();
+                    $fix->close();
+                } catch (Throwable $e) { /* is_draft column not present */ }
             } catch (Throwable $e) {
                 error_log('[SafeTrade] post_item failed: ' . $e->getMessage());
                 flash_set('error', 'Your item could not be saved' . (APP_ENV !== 'production' ? ': ' . $e->getMessage() : '. Please try again.'));
@@ -1548,6 +1567,17 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
    View data loading
    ========================================================= */
 $view = $_GET['view'] ?? 'home';
+// Dev only: PHP errors are hidden (display_errors=0), so a fatal error
+// mid-page just silently cuts the page off. Print it at the bottom.
+if (APP_ENV !== 'production') {
+    register_shutdown_function(function () {
+        $err = error_get_last();
+        if ($err && in_array($err['type'], [E_ERROR, E_CORE_ERROR, E_COMPILE_ERROR, E_USER_ERROR, E_RECOVERABLE_ERROR], true)) {
+            echo '<pre style="position:fixed;left:240px;right:10px;bottom:10px;z-index:99999;background:#fff3f3;color:#a00;border:2px solid #a00;padding:12px;white-space:pre-wrap;font-size:12px;">PHP FATAL: '
+               . htmlspecialchars($err['message'] . ' in ' . basename($err['file']) . ':' . $err['line'], ENT_QUOTES, 'UTF-8') . '</pre>';
+        }
+    });
+}
 $initials = strtoupper(substr($user['first_name'], 0, 1) . substr($user['last_name'], 0, 1));
 $fullName = trim($user['first_name'] . ' ' . $user['last_name']);
 $verified = $user['verification_status'] === 'approved';
@@ -1685,7 +1715,7 @@ if ($view === 'home') {
                     ELSE NULL END AS distance_km,
                     $imagesSubquery
              FROM products p JOIN users u ON u.id=p.seller_id
-             WHERE COALESCE(p.is_active,1)=1 AND COALESCE(p.is_deleted,0)=0 AND p.seller_id<>?
+             WHERE COALESCE(p.is_active,1)=1 AND COALESCE(p.is_deleted,0)=0 AND COALESCE(p.is_draft,0)=0 AND p.seller_id<>?
              ORDER BY (distance_km IS NULL) ASC, distance_km ASC, p.created_at DESC LIMIT 9"
         );
         $stmt->bind_param('dddi', $myLat, $myLng, $myLat, $userId);
@@ -1693,7 +1723,7 @@ if ($view === 'home') {
         $stmt = $conn->prepare(
             "SELECT p.*, u.first_name, u.last_name, NULL AS distance_km, $imagesSubquery
              FROM products p JOIN users u ON u.id=p.seller_id
-             WHERE COALESCE(p.is_active,1)=1 AND COALESCE(p.is_deleted,0)=0 AND p.seller_id<>?
+             WHERE COALESCE(p.is_active,1)=1 AND COALESCE(p.is_deleted,0)=0 AND COALESCE(p.is_draft,0)=0 AND p.seller_id<>?
              ORDER BY p.created_at DESC LIMIT 9"
         );
         $stmt->bind_param('i', $userId);
@@ -1739,7 +1769,7 @@ if ($view === 'market') {
         }
     }
 
-    $where  = ['COALESCE(p.is_active,1)=1', 'COALESCE(p.is_deleted,0)=0', 'p.seller_id<>?'];
+    $where  = ['COALESCE(p.is_active,1)=1', 'COALESCE(p.is_deleted,0)=0', 'COALESCE(p.is_draft,0)=0', 'p.seller_id<>?'];
     $params = [$userId];
 
     if ($catIds) {
@@ -1817,7 +1847,7 @@ if ($view === 'my-listings') {
                   WHERE t.product_id = p.id AND t.status = 'confirmed'
                   ORDER BY t.created_at DESC LIMIT 1) AS pending_tx_id,
                 $imagesSubquery
-         FROM products p WHERE p.seller_id=? ORDER BY p.is_deleted ASC, p.created_at DESC"
+         FROM products p WHERE p.seller_id=? ORDER BY COALESCE(p.is_deleted,0) ASC, p.created_at DESC"
     );
     $stmt->bind_param('i', $userId);
     $stmt->execute();
@@ -3276,7 +3306,7 @@ a{color:inherit;text-decoration:none;}
       <div class="grid">
         <?php while ($p = $pageData['listings']->fetch_assoc()):
           $lThumbs = product_thumbs($p['images_concat'] ?? null);
-          $isRemoved = (int) $p['is_deleted'] === 1;
+          $isRemoved = (int) ($p['is_deleted'] ?? 0) === 1;
           $isDraft   = (int) ($p['is_draft'] ?? 0) === 1;
           // Sold = not admin-removed, not a draft, but no longer active
           // — that only happens once the buyer has confirmed the item
@@ -3315,7 +3345,13 @@ a{color:inherit;text-decoration:none;}
           </div>
         <?php endwhile; ?>
       </div>
-      <p style="font-size:11px;color:#9a9a9a;margin-top:14px;">debug · you are user #<?= (int) $userId ?> · <?= (int) $pageData['listings']->num_rows ?> listing(s) found</p>
+      <p style="font-size:11px;color:#9a9a9a;margin-top:14px;">debug · you are user #<?= (int) $userId ?> · <?= (int) $pageData['listings']->num_rows ?> listing(s) found
+        <?php try {
+          $dbi = $conn->query("SELECT DATABASE() AS db, (SELECT COUNT(*) FROM products) AS total, (SELECT MAX(id) FROM products) AS maxid, (SELECT COUNT(*) FROM products WHERE seller_id=" . (int) $userId . ") AS mine")->fetch_assoc();
+          echo ' · db ' . e((string) $dbi['db']) . ' · products total ' . (int) $dbi['total'] . ' · newest id ' . (int) $dbi['maxid'] . ' · yours ' . (int) $dbi['mine'];
+          $lastRow = $conn->query("SELECT id, seller_id, is_active, is_deleted, is_draft FROM products ORDER BY id DESC LIMIT 1")->fetch_assoc();
+          if ($lastRow) echo ' · newest row: ' . e(json_encode($lastRow));
+        } catch (Throwable $e) { echo ' · diag error: ' . e($e->getMessage()); } ?></p>
 
     <?php elseif ($view === 'listing'):
       $p = $pageData['product'] ?? null;
@@ -4454,7 +4490,7 @@ a{color:inherit;text-decoration:none;}
       <div class="grid">
         <?php while ($p = $pageData['profileListings']->fetch_assoc()):
           $lThumbs   = product_thumbs($p['images_concat'] ?? null);
-          $isRemoved = (int) $p['is_deleted'] === 1;
+          $isRemoved = (int) ($p['is_deleted'] ?? 0) === 1;
           $isSold    = !$isRemoved && (int) $p['is_active'] === 0; ?>
           <div class="card" style="<?= ($isRemoved || $isSold) ? 'opacity:.75;' : '' ?>">
             <div class="icon" style="<?= $lThumbs ? 'font-size:0;' : '' ?>">

@@ -59,6 +59,18 @@ function inbox_ensure(): void
             created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
             PRIMARY KEY (id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        // An older announcements table may predate these columns
+        // (CREATE TABLE IF NOT EXISTS won't add them) — add what's missing.
+        foreach (['starts_at' => 'DATETIME NULL', 'ends_at' => 'DATETIME NULL', 'recipients' => 'INT NOT NULL DEFAULT 0', 'is_pinned' => 'TINYINT(1) NOT NULL DEFAULT 0', 'audience' => "VARCHAR(12) NOT NULL DEFAULT 'users'"] as $col => $def) {
+            try {
+                $chk = $c->query("SHOW COLUMNS FROM announcements LIKE '" . $col . "'");
+                if ($chk && $chk->num_rows === 0) {
+                    $c->query("ALTER TABLE announcements ADD COLUMN $col $def");
+                }
+            } catch (Throwable $e) {
+                error_log('[SafeTrade] announcements migrate ' . $col . ' failed: ' . $e->getMessage());
+            }
+        }
     } catch (Throwable $e) {
         error_log('[SafeTrade] inbox_ensure failed: ' . $e->getMessage());
     }
