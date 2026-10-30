@@ -94,7 +94,7 @@ if ($view === 'item') {
         }
     }
 
-    $where  = ['p.is_active=1', 'p.is_deleted=0'];
+    $where  = ['COALESCE(p.is_active,1)=1', 'COALESCE(p.is_deleted,0)=0'];
     $params = [];
     $types  = '';
     if ($catIds) {

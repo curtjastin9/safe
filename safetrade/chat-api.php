@@ -58,6 +58,14 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
         exit;
     }
 
+    $badWord = chat_find_bad_word($content);
+    if ($badWord !== null) {
+        audit_log((int) $userId, 'user.chat.blocked_word', 'transaction', $txId, 'matched=' . $badWord);
+        http_response_code(422);
+        echo json_encode(['error' => 'inappropriate_language', 'message' => chat_bad_word_message()]);
+        exit;
+    }
+
     $stmt = $conn->prepare('INSERT INTO messages (transaction_id, sender_id, content) VALUES (?, ?, ?)');
     $stmt->bind_param('iis', $txId, $userId, $content);
     $stmt->execute();

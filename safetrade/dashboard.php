@@ -930,26 +930,38 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash_set('error', 'Please fill in a title and category.');
                 redirect('/dashboard.php?view=sell&type=' . $sellType . ($groupId ? '&group_id=' . $groupId : ''));
             }
+            $productId = 0;
             try {
-                // quantity requires migration_add_product_quantity.sql —
-                // fall back to the quantity-less insert below (always
-                // single-unit) if that hasn't been run yet.
-                $stmt = $conn->prepare(
-                    "INSERT INTO products (seller_id, category_id, title, description, price, quantity, `condition`, location, icon, is_active)
-                     VALUES (?,?,?,?,?,?, 'used', ?, ?, 1)"
-                );
-                $stmt->bind_param('iissdiss', $userId, $catId, $title, $desc, $price, $qty, $loc, $icon);
-                $stmt->execute();
+                try {
+                    // quantity requires migration_add_product_quantity.sql —
+                    // fall back to the quantity-less insert below (always
+                    // single-unit) if that hasn't been run yet.
+                    $stmt = $conn->prepare(
+                        "INSERT INTO products (seller_id, category_id, title, description, price, quantity, `condition`, location, icon, is_active)
+                         VALUES (?,?,?,?,?,?, 'used', ?, ?, 1)"
+                    );
+                    $stmt->bind_param('iissdiss', $userId, $catId, $title, $desc, $price, $qty, $loc, $icon);
+                    $stmt->execute();
+                } catch (Throwable $e) {
+                    error_log('[SafeTrade] post_item insert with quantity failed, retrying without: ' . $e->getMessage());
+                    $stmt = $conn->prepare(
+                        "INSERT INTO products (seller_id, category_id, title, description, price, `condition`, location, icon, is_active)
+                         VALUES (?,?,?,?,?, 'used', ?, ?, 1)"
+                    );
+                    $stmt->bind_param('iissdss', $userId, $catId, $title, $desc, $price, $loc, $icon);
+                    $stmt->execute();
+                }
+                $productId = (int) $conn->insert_id;
+                $stmt->close();
             } catch (Throwable $e) {
-                $stmt = $conn->prepare(
-                    "INSERT INTO products (seller_id, category_id, title, description, price, `condition`, location, icon, is_active)
-                     VALUES (?,?,?,?,?, 'used', ?, ?, 1)"
-                );
-                $stmt->bind_param('iissdss', $userId, $catId, $title, $desc, $price, $loc, $icon);
-                $stmt->execute();
+                error_log('[SafeTrade] post_item failed: ' . $e->getMessage());
+                flash_set('error', 'Your item could not be saved' . (APP_ENV !== 'production' ? ': ' . $e->getMessage() : '. Please try again.'));
+                redirect('/dashboard.php?view=sell&type=' . $sellType . ($groupId ? '&group_id=' . $groupId : ''));
             }
-            $productId = $conn->insert_id;
-            $stmt->close();
+            if ($productId <= 0) {
+                flash_set('error', 'Your item could not be saved. Please try again.');
+                redirect('/dashboard.php?view=sell&type=' . $sellType . ($groupId ? '&group_id=' . $groupId : ''));
+            }
 
             // If this was posted from inside a group's "Sell an item here"
             // link, tag the listing to the group and drop it into the
@@ -958,8 +970,13 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             link_product_to_group($conn, $productId, $groupId, $userId);
 
             /* ---- Photos (optional, up to 6, compressed before storage) ---- */
-            $photoResult = save_uploaded_product_photos($conn, $productId, $_FILES['photos'] ?? [], 6);
-            $photoErrors = $photoResult['errors'];
+            try {
+                $photoResult = save_uploaded_product_photos($conn, $productId, $_FILES['photos'] ?? [], 6);
+                $photoErrors = $photoResult['errors'];
+            } catch (Throwable $e) {
+                error_log('[SafeTrade] post_item photos failed: ' . $e->getMessage());
+                $photoErrors = ['photos could not be saved'];
+            }
 
             audit_log($userId, 'user.product.posted', 'product', $productId);
             if ($photoErrors) {
@@ -1291,7 +1308,10 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             // fetch_transaction() re-checks that $userId is the buyer or
             // seller on this transaction — nobody else can post here.
             $tx = fetch_transaction($conn, $txId, $userId);
-            if ($tx && $content !== '') {
+            if ($tx && $content !== '' && ($badWord = chat_find_bad_word($content)) !== null) {
+                audit_log($userId, 'user.chat.blocked_word', 'transaction', $txId, 'matched=' . $badWord);
+                flash_set('error', chat_bad_word_message());
+            } elseif ($tx && $content !== '') {
                 $stmt = $conn->prepare('INSERT INTO messages (transaction_id, sender_id, content) VALUES (?,?,?)');
                 $stmt->bind_param('iis', $txId, $userId, $content);
                 $stmt->execute();
@@ -1665,7 +1685,7 @@ if ($view === 'home') {
                     ELSE NULL END AS distance_km,
                     $imagesSubquery
              FROM products p JOIN users u ON u.id=p.seller_id
-             WHERE p.is_active=1 AND p.is_deleted=0 AND p.seller_id<>?
+             WHERE COALESCE(p.is_active,1)=1 AND COALESCE(p.is_deleted,0)=0 AND p.seller_id<>?
              ORDER BY (distance_km IS NULL) ASC, distance_km ASC, p.created_at DESC LIMIT 9"
         );
         $stmt->bind_param('dddi', $myLat, $myLng, $myLat, $userId);
@@ -1673,7 +1693,7 @@ if ($view === 'home') {
         $stmt = $conn->prepare(
             "SELECT p.*, u.first_name, u.last_name, NULL AS distance_km, $imagesSubquery
              FROM products p JOIN users u ON u.id=p.seller_id
-             WHERE p.is_active=1 AND p.is_deleted=0 AND p.seller_id<>?
+             WHERE COALESCE(p.is_active,1)=1 AND COALESCE(p.is_deleted,0)=0 AND p.seller_id<>?
              ORDER BY p.created_at DESC LIMIT 9"
         );
         $stmt->bind_param('i', $userId);
@@ -1719,7 +1739,7 @@ if ($view === 'market') {
         }
     }
 
-    $where  = ['p.is_active=1', 'p.is_deleted=0', 'p.seller_id<>?'];
+    $where  = ['COALESCE(p.is_active,1)=1', 'COALESCE(p.is_deleted,0)=0', 'p.seller_id<>?'];
     $params = [$userId];
 
     if ($catIds) {
@@ -2602,6 +2622,7 @@ a{color:inherit;text-decoration:none;}
           <?= product_card($it, $userId) ?>
         <?php endwhile; ?>
       </div>
+      <p style="font-size:11px;color:#9a9a9a;margin-top:14px;">debug · you are user #<?= (int) $userId ?> · <?= (int) $pageData['items']->num_rows ?> listing(s) matched</p>
 
     <?php elseif ($view === 'item'):
       $it = $pageData['item'];
@@ -3294,6 +3315,7 @@ a{color:inherit;text-decoration:none;}
           </div>
         <?php endwhile; ?>
       </div>
+      <p style="font-size:11px;color:#9a9a9a;margin-top:14px;">debug · you are user #<?= (int) $userId ?> · <?= (int) $pageData['listings']->num_rows ?> listing(s) found</p>
 
     <?php elseif ($view === 'listing'):
       $p = $pageData['product'] ?? null;
@@ -3513,10 +3535,22 @@ a{color:inherit;text-decoration:none;}
             })
               .then(function (res) { return res.json(); })
               .then(function (data) {
+                var warn = document.getElementById('chat-warning');
+                if (!warn) {
+                  warn = document.createElement('div');
+                  warn.id = 'chat-warning';
+                  warn.className = 'alert error';
+                  warn.style.cssText = 'display:none;margin:8px 0 0;';
+                  form.parentNode.insertBefore(warn, form.nextSibling);
+                }
                 if (data && data.message) {
+                  warn.style.display = 'none';
                   appendMessage(data.message);
                   scrollToBottom();
                   field.value = '';
+                } else if (data && data.error === 'inappropriate_language') {
+                  warn.textContent = data.message || 'Please keep it respectful.';
+                  warn.style.display = 'block';
                 }
               })
               .catch(function () { /* leave the text so the user can retry */ })
