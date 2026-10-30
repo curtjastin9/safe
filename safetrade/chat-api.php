@@ -63,6 +63,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     $stmt->execute();
     $newId = $conn->insert_id;
     $stmt->close();
+    inbox_trade_event((int) $txId, 'message', ['sender' => (int) $userId]);
 
     echo json_encode([
         'status'  => $tx['status'],

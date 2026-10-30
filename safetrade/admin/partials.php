@@ -8,6 +8,8 @@
 function render_admin_sidebar(string $activeNav, array $adminUser): void
 {
     $links = [
+        'inbox'          => ['Inbox',           'dashboard.php?tab=inbox', '<path d="M3 13l3-8h12l3 8"/><path d="M3 13v6a1 1 0 001 1h16a1 1 0 001-1v-6h-5l-1 2h-6l-1-2z"/>'],
+        'announcements'  => ['Announcements',   'dashboard.php?tab=announcements', '<path d="M3 11v2a1 1 0 001 1h3l5 4V6L7 10H4a1 1 0 00-1 1z"/><path d="M16 8a5 5 0 010 8"/>'],
         'overview'       => ['Overview',       'dashboard.php',       '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>'],
         'users'          => ['Users',           'users.php',           '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6.3 6.5-6.3s6.5 2.7 6.5 6.3"/><path d="M16 4.3a3.2 3.2 0 010 6.3"/><path d="M21.5 20c0-2.9-1.9-5.2-4.5-6"/>'],
         'verifications'  => ['Verifications',   'verifications.php',   '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>'],

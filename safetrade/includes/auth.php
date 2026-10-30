@@ -100,6 +100,13 @@ function register_user(string $firstName, string $lastName, string $email, strin
 
     audit_log($userId, 'user.register', 'user', $userId);
 
+    if (function_exists('inbox_push')) {
+        inbox_push((int) $userId, 'account', 'Welcome to SafeTrade',
+            'Your account is awaiting verification. Trade updates, announcements and maintenance notices will show up here.', null, null, 'welcome');
+        inbox_push_staff('account', 'New registration: ' . trim($firstName . ' ' . $lastName),
+            'A new account is waiting for verification.', '/admin/dashboard.php?tab=verifications', (int) $userId, 'staff_registration');
+    }
+
     return ['success' => true, 'errors' => [], 'user_id' => $userId];
 }
 

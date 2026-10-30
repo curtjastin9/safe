@@ -73,6 +73,7 @@ require_once BASE_PATH . '/config/database.php';
 require_once BASE_PATH . '/includes/functions.php';
 require_once BASE_PATH . '/includes/validation.php';
 require_once BASE_PATH . '/includes/auth.php';
+require_once BASE_PATH . '/includes/inbox.php';
 // ---- Outgoing email (Gmail SMTP, via a Google App Password) ----
 // NOTE: this is a real credential sitting in a plain PHP file. Fine for
 // local XAMPP development, but before this ever goes anywhere public

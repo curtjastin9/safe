@@ -16,6 +16,30 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
 
     switch ($action) {
 
+        case 'send_announcement': {
+            $aTitle = trim(clean_input($_POST['title'] ?? ''));
+            $aBody  = trim(clean_input($_POST['body'] ?? ''));
+            $aCat   = in_array($_POST['category'] ?? '', ['announcement', 'update', 'maintenance'], true) ? $_POST['category'] : 'announcement';
+            $aAud   = in_array($_POST['audience'] ?? '', ['users', 'staff', 'all'], true) ? $_POST['audience'] : 'users';
+            if ($aTitle === '' || $aBody === '') {
+                flash_set('error', 'Title and message are required.');
+                break;
+            }
+            $aStart = inbox_parse_dt($_POST['starts_at'] ?? null);
+            $aEnd   = inbox_parse_dt($_POST['ends_at'] ?? null);
+            $sent = inbox_broadcast((int) $adminId, $aCat, $aTitle, $aBody, $aAud, $aStart, $aEnd, !empty($_POST['pin']));
+            audit_log($adminId, 'admin.announcement.sent', 'announcement', null, $aCat . ' to ' . $aAud . ' (' . $sent . ' recipients): ' . $aTitle);
+            flash_set('success', 'Sent to ' . $sent . ' inbox' . ($sent === 1 ? '' : 'es') . '.');
+            break;
+        }
+
+        case 'delete_announcement': {
+            inbox_delete_announcement((int) ($_POST['id'] ?? 0));
+            audit_log($adminId, 'admin.announcement.deleted', 'announcement', (int) ($_POST['id'] ?? 0));
+            flash_set('success', 'Announcement removed from everyone\'s inbox.');
+            break;
+        }
+
         case 'verify_user': {
             $targetId = (int) ($_POST['user_id'] ?? 0);
 
@@ -340,6 +364,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             $stmt->close();
             audit_log($adminId, 'admin.product.' . $action, 'product', $productId);
+            inbox_product_moderated((int) $productId, $action);
             flash_set('success', 'Listing updated.');
             break;
         }
@@ -415,6 +440,10 @@ $totalGroups   = count_q($conn, "SELECT COUNT(*) c FROM groups");
 $completedTx   = count_q($conn, "SELECT COUNT(*) c FROM transactions WHERE status='completed'");
 
 $data = [];
+
+if ($tab === 'inbox' || $tab === 'announcements') {
+    inbox_ensure();
+}
 
 if ($tab === 'overview') {
     $data['recentUsers'] = $conn->query("SELECT id, first_name, last_name, email, status, created_at FROM users WHERE role='user' ORDER BY created_at DESC LIMIT 6");
@@ -824,6 +853,13 @@ function tab_link(string $key, string $label, string $current, string $iconPath,
     </div>
 
     <nav class="admin-nav">
+      <?= inbox_badge_css() ?>
+      <a class="admin-link<?= $tab === 'inbox' ? ' active' : '' ?>" href="?tab=inbox">
+        <?= inbox_icon_svg() ?><span>Inbox</span>
+        <?php $ibxN = inbox_unread((int) $adminId); ?>
+        <span class="count" data-inbox-badge data-count="<?= $ibxN ?>"<?= $ibxN > 0 ? '' : ' style="display:none;"' ?>><?= $ibxN > 99 ? '99+' : $ibxN ?></span>
+      </a>
+      <?= tab_link('announcements', 'Announcements', $tab, '<path d="M3 11v2a1 1 0 001 1h3l5 4V6L7 10H4a1 1 0 00-1 1z"/><path d="M16 8a5 5 0 010 8"/>') ?>
       <?= tab_link('overview',       'Overview',       $tab, '<path d="M3 11l9-7 9 7"/><path d="M5 10v10h14V10"/>') ?>
       <?= tab_link('users',          'Users',          $tab, '<circle cx="9" cy="8" r="3.2"/><path d="M2.5 20c0-3.6 2.9-6.3 6.5-6.3s6.5 2.7 6.5 6.3"/><path d="M16 4.3a3.2 3.2 0 010 6.3"/><path d="M21.5 20c0-2.9-1.9-5.2-4.5-6"/>') ?>
       <?= tab_link('verifications',  'Verifications',  $tab, '<path d="M9 12l2 2 4-4"/><circle cx="12" cy="12" r="9"/>', $pendingVerifs) ?>
@@ -873,7 +909,15 @@ function tab_link(string $key, string $label, string $current, string $iconPath,
       <div class="alert <?= $f['type'] === 'error' ? 'error' : 'success' ?>"><?= e($f['message']) ?></div>
     <?php endforeach; ?>
 
-    <?php if ($tab === 'overview'): ?>
+    <?= inbox_maintenance_banner('admin') ?>
+
+    <?php if ($tab === 'inbox'): ?>
+      <?php inbox_render_panel('admin'); ?>
+
+    <?php elseif ($tab === 'announcements'): ?>
+      <?php inbox_render_announcements_admin(); ?>
+
+    <?php elseif ($tab === 'overview'): ?>
       <div class="admin-topbar"><div><h1>Overview</h1><p class="sub">What's happening across SafeTrade right now.</p></div></div>
       <div class="stat-cards">
         <div class="stat-card"><div class="label">Total users</div><div class="value"><?= number_format($totalUsers) ?></div></div>

@@ -100,6 +100,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'GET' && ($_GET['want_chat'] ?? '') === '1') 
             $stmt->close();
 
             audit_log($userId, 'user.trade.interest_after_login', 'transaction', $wantChatTxId, 'product=' . $wantChatProductId);
+            inbox_trade_event((int) $wantChatTxId, 'interest');
         }
         redirect('/dashboard.php?view=chat&t=' . $wantChatTxId);
     }
@@ -1245,6 +1246,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param('iis', $txId, $userId, $msg);
                 $stmt->execute();
                 $stmt->close();
+                inbox_trade_event((int) $txId, 'interest');
             }
             redirect('/dashboard.php?view=chat&t=' . $txId);
         }
@@ -1272,6 +1274,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $stmt->execute();
                     $stmt->close();
                     audit_log($userId, 'user.trade.quantity_updated', 'transaction', $txId, 'qty=' . $qty);
+                    inbox_trade_event((int) $txId, 'quantity', ['qty' => $qty]);
                     flash_set('success', "Quantity updated to $qty.");
                 } catch (Throwable $e) {
                     flash_set('error', 'Quantity tracking isn\'t available yet — ask an admin to run migration_add_product_quantity.sql.');
@@ -1293,6 +1296,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param('iis', $txId, $userId, $content);
                 $stmt->execute();
                 $stmt->close();
+                inbox_trade_event((int) $txId, 'message', ['sender' => (int) $userId]);
             }
             redirect('/dashboard.php?view=chat&t=' . $txId);
         }
@@ -1336,6 +1340,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 }
 
                 audit_log($userId, 'user.trade.meetup_proposed', 'transaction', $txId, 'qty=' . $qty);
+                inbox_trade_event((int) $txId, 'meetup_proposed');
                 flash_set('success', 'Meet-up proposed — waiting for the seller to confirm.');
             } elseif ($tx && !$isBuyer) {
                 flash_set('error', 'Only the buyer can propose a meet-up.');
@@ -1358,6 +1363,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 $stmt->close();
                 audit_log($userId, 'user.trade.meetup_confirmed', 'transaction', $txId);
+                inbox_trade_event((int) $txId, 'meetup_confirmed');
                 flash_set('success', "Meet-up confirmed — the buyer can now confirm once they've received the item.");
             } elseif ($tx && !$isSeller) {
                 flash_set('error', 'Only the seller can confirm this meet-up.');
@@ -1379,6 +1385,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->execute();
                 $stmt->close();
                 audit_log($userId, 'user.trade.meetup_rejected', 'transaction', $txId);
+                inbox_trade_event((int) $txId, 'meetup_rejected');
                 flash_set('success', 'Sent back to the buyer to propose a new time.');
             }
             redirect('/dashboard.php?view=chat&t=' . $txId);
@@ -1423,6 +1430,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->close();
 
                 audit_log($userId, 'user.trade.buyer_confirmed', 'transaction', $txId, $rating . ' star(s) — ' . $review);
+                inbox_trade_event((int) $txId, 'buyer_confirmed', ['rating' => $rating, 'review' => $review]);
                 flash_set('success', "Thanks! We've let the seller know — the trade will be marked complete once they confirm the sale.");
                 redirect('/dashboard.php?view=chat&t=' . $txId);
             }
@@ -1498,6 +1506,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->close();
 
                 audit_log($userId, 'user.trade.seller_confirmed', 'transaction', $txId, 'qty=' . $boughtQty);
+                inbox_trade_event((int) $txId, 'sale_completed');
                 flash_set('success', $remaining > 0
                     ? "Sale confirmed — $boughtQty sold, $remaining still in stock."
                     : 'Sale confirmed — the listing is now marked Sold.');
@@ -1905,6 +1914,10 @@ if ($view === 'group') {
             $pageData['feedAvailable'] = false; // migration_add_group_feed.sql not run yet
         }
     }
+}
+
+if ($view === 'inbox') {
+    inbox_ensure();
 }
 
 if ($view === 'my-trades') {
@@ -2429,6 +2442,7 @@ a{color:inherit;text-decoration:none;}
       <?= nav_link('market', 'Browse Market', $view, '<path d="M4 4h16l1.4 5.2a1 1 0 01-1 1.3H3.6a1 1 0 01-1-1.3L4 4z"/><path d="M4.5 10.5V20h15v-9.5"/><path d="M9.5 20v-6.5h5V20"/>') ?>
       <?= nav_link('my-listings', 'My Listings', $view, '<path d="M7 4h10l3 5-8 11L2 9z"/><path d="M2 9h18M9.5 4L7 9l5 11 5-11-2.5-5"/>') ?>
       <?= nav_link('my-trades', 'My Trades', $view, '<path d="M3 11h13M12 6l4 5-4 5"/><path d="M21 13H8M12 18l-4-5 4-5"/>') ?>
+      <?= inbox_nav_link_user($view) ?>
       <?= nav_link('groups', 'Groups', $view, '<circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3.3 2.9-5.8 6.5-5.8s6.5 2.5 6.5 5.8"/><path d="M16.5 6.5a3 3 0 010 5.8"/>') ?>
       <?= nav_link('profile', 'My Profile', $view, '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>') ?>
     </nav>
@@ -2466,6 +2480,13 @@ a{color:inherit;text-decoration:none;}
     <?php foreach (flash_get_all() as $f): ?>
       <div class="alert <?= $f['type'] === 'error' ? 'error' : 'success' ?>"><?= e($f['message']) ?></div>
     <?php endforeach; ?>
+
+    <?= inbox_maintenance_banner('user') ?>
+
+    <?php if ($view === 'inbox'): ?>
+      <?php inbox_render_panel('user'); ?>
+
+    <?php endif; ?>
 
     <?php if (in_array($view, ['home', 'market'], true)): ?>
       <?php if ($myLat !== null && $myLng !== null && $myLocationSource === 'ip'): ?>
