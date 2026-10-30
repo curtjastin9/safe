@@ -2,6 +2,7 @@
 declare(strict_types=1);
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/includes/image_helper.php';
+require_once __DIR__ . '/includes/group_logs.php';
 
 $user   = require_login();
 $userId = $user['id'];
@@ -620,6 +621,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
             $stmt->execute();
             $stmt->close();
 
+            group_log($conn, (int) $groupId, $userId, 'created');
             audit_log($userId, 'user.group.created', 'group', $groupId);
             flash_set('success', 'Group created — it now shows up under Suggested Groups on Home.');
             redirect('/dashboard.php?view=group&id=' . $groupId);
@@ -637,6 +639,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $stmt->bind_param('ii', $groupId, $userId);
                 $stmt->execute();
                 $stmt->close();
+                group_log($conn, $groupId, $userId, 'joined');
                 flash_set('success', 'You have joined the group!');
             }
             redirect('/dashboard.php?view=group&id=' . $groupId);
@@ -680,6 +683,9 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 $ins->execute();
                 $ins->close();
             }
+            $invitedBy = (int) ($_POST['invited_by'] ?? 0);
+            if ($invitedBy === $userId || !user_is_group_member($conn, $gid, $invitedBy)) $invitedBy = null;
+            group_log($conn, $gid, $userId, 'joined', $invitedBy);
             audit_log($userId, 'user.group.joined_via_code', 'group', $gid);
             flash_set('success', 'You joined "' . $codeGroup['name'] . '" via group code!');
             redirect('/dashboard.php?view=group&id=' . $gid);
@@ -755,6 +761,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $d5->execute();
                     $d5->close();
 
+                    try { $conn->query('DELETE FROM group_logs WHERE group_id=' . (int) $groupId); } catch (Throwable $e) {}
                     audit_log($userId, 'user.group.deleted', 'group', $groupId);
                     flash_set('success', 'Group deleted — its invite code is free to be reused.');
                 } catch (Throwable $e) {
@@ -765,6 +772,33 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                 flash_set('error', 'Only the group creator can delete this group.');
             }
             redirect('/dashboard.php?view=groups');
+        }
+
+        case 'kick_member': {
+            $groupId  = (int) ($_POST['group_id'] ?? 0);
+            $targetId = (int) ($_POST['user_id'] ?? 0);
+            $own = $conn->prepare('SELECT name FROM groups WHERE id=? AND owner_id=? LIMIT 1');
+            $own->bind_param('ii', $groupId, $userId);
+            $own->execute();
+            $grp = $own->get_result()->fetch_assoc();
+            $own->close();
+
+            if ($grp && $targetId > 0 && $targetId !== $userId && user_is_group_member($conn, $groupId, $targetId)) {
+                try {
+                    $removed = group_remove_member($conn, $groupId, $targetId);
+                    group_log($conn, $groupId, $targetId, 'kicked', $userId);
+                    audit_log($userId, 'user.group.kicked', 'group', $groupId, 'user=' . $targetId . ', ' . $removed . ' post(s) removed');
+                    inbox_push($targetId, 'account', 'You were removed from a group',
+                        'You were removed from “' . $grp['name'] . '” by the group owner.', null, $groupId, 'group_kicked');
+                    flash_set('success', 'Member removed from the group.');
+                } catch (Throwable $e) {
+                    error_log('[SafeTrade] kick_member failed: ' . $e->getMessage());
+                    flash_set('error', 'Could not remove that member — please try again.');
+                }
+            } else {
+                flash_set('error', 'Only the group creator can remove members.');
+            }
+            redirect('/dashboard.php?view=group&id=' . $groupId);
         }
 
         case 'leave_group': {
@@ -819,6 +853,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'POST') {
                     $d4->execute();
                     $d4->close();
 
+                    group_log($conn, $groupId, $userId, 'left');
                     audit_log($userId, 'user.group.left', 'group', $groupId, count($postIds) . ' post(s) removed');
                     flash_set('success', 'You left the group — your posts in it were removed.');
                 } catch (Throwable $e) {
@@ -4080,7 +4115,8 @@ a{color:inherit;text-decoration:none;}
       })();
       </script>
 
-    <?php elseif ($view === 'group'):
+    <?php elseif ($view === 'group'): include __DIR__ . '/includes/group_view.php'; ?>
+    <?php elseif ($view === 'group_old_unused'):
       $g = $pageData['group'] ?? null; ?>
       <a class="crumb" href="?view=groups">← Browse groups</a>
       <?php if (!$g): ?><p>Group not found.</p><?php else: ?>
@@ -4794,6 +4830,22 @@ document.querySelectorAll('.photo-strip').forEach(function (strip) {
     var trigger = e.target.closest ? e.target.closest('.hp-trigger') : null;
     if (trigger) showFor(trigger);
   });
+})();
+</script>
+<script>
+(function () {
+  var p = new URLSearchParams(location.search), code = (p.get('code') || '').toUpperCase();
+  var modal = document.getElementById('join-code-modal');
+  if (!code || !modal || typeof previewGroup !== 'function') return;
+  var inv = parseInt(p.get('inv') || '0', 10);
+  if (inv > 0) {
+    var h = document.createElement('input');
+    h.type = 'hidden'; h.name = 'invited_by'; h.value = inv;
+    document.getElementById('code-join-form').appendChild(h);
+  }
+  modal.style.display = 'flex';
+  document.getElementById('code-input').value = code;
+  previewGroup(code);
 })();
 </script>
 </body>

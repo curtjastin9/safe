@@ -18,6 +18,11 @@ declare(strict_types=1);
  *
  * Every helper here is wrapped in try/catch: an inbox problem must
  * never break a trade, a login or an admin action.
+ *
+ * REALTIME: the page gets updates through long polling
+ * (inbox-api.php?action=wait), driven by the poller script emitted from
+ * inbox_maintenance_banner(). It fires an "inbox:update" window event
+ * that the inbox panel listens to.
  * ---------------------------------------------------------------------
  */
 
@@ -449,7 +454,8 @@ function inbox_nav_link_user(string $currentView): string
 /**
  * Maintenance strip shown at the top of every dashboard page while a
  * maintenance notice is ongoing or starts within 3 days. Also starts
- * the lightweight badge poller so the sidebar count stays live.
+ * the realtime long-poll so the sidebar badge, toast and inbox list
+ * update without a reload.
  */
 function inbox_maintenance_banner(string $mode = 'user'): string
 {
@@ -485,18 +491,67 @@ function inbox_maintenance_banner(string $mode = 'user'): string
     }
 
     $api = rtrim(BASE_URL, '/') . '/inbox-api.php';
-    $html .= '<script>(function(){if(window.__ibxPoll)return;window.__ibxPoll=1;var api=' . json_encode($api) . ';'
-           . 'function set(n){document.querySelectorAll("[data-inbox-badge]").forEach(function(el){el.textContent=n>99?"99+":n;el.setAttribute("data-count",n);el.style.display=n>0?"":"none";});'
-           . 'document.querySelectorAll("a.admin-link[href*=\'tab=inbox\']").forEach(function(a){var c=a.querySelector(".count");if(n>0){if(!c){c=document.createElement("span");c.className="count";a.appendChild(c);}c.textContent=n>99?"99+":n;}else if(c){c.remove();}});}'
-           . 'function tick(){if(document.hidden)return;fetch(api+"?action=count",{credentials:"same-origin"}).then(function(r){return r.ok?r.json():null;}).then(function(d){if(d&&d.ok)set(d.unread);}).catch(function(){});}'
-           . 'setInterval(tick,30000);})();</script>';
+    $html .= '<script>window.__IBX_API=' . json_encode($api) . ';</script>' . <<<'JS'
+<script>
+(function () {
+  if (window.__ibxPoll) return;
+  window.__ibxPoll = 1;
+  var api = window.__IBX_API, latest = -1, unread = -1, fails = 0;
+
+  function setBadges(n) {
+    document.querySelectorAll('[data-inbox-badge]').forEach(function (el) {
+      el.textContent = n > 99 ? '99+' : n; el.setAttribute('data-count', n); el.style.display = n > 0 ? '' : 'none';
+    });
+    document.querySelectorAll('a.admin-link[href*="tab=inbox"]').forEach(function (a) {
+      var c = a.querySelector('.count');
+      if (n > 0) { if (!c) { c = document.createElement('span'); c.className = 'count'; a.appendChild(c); } c.textContent = n > 99 ? '99+' : n; }
+      else if (c) { c.remove(); }
+    });
+  }
+
+  function toast(title) {
+    var t = document.createElement('div');
+    t.textContent = '🔔 ' + title;
+    t.style.cssText = 'position:fixed;right:20px;bottom:20px;z-index:99999;max-width:320px;background:#092C21;color:#FBF7EF;padding:13px 18px;border-radius:14px;font:600 13px Inter,sans-serif;box-shadow:0 12px 30px rgba(0,0,0,.3);cursor:pointer;transition:opacity .3s;';
+    t.onclick = function () { window.location.search = document.querySelector('a.admin-link[href*="tab=inbox"]') ? '?tab=inbox' : '?view=inbox'; };
+    document.body.appendChild(t);
+    setTimeout(function () { t.style.opacity = '0'; setTimeout(function () { t.remove(); }, 300); }, 5000);
+  }
+
+  function announceNew() {
+    fetch(api + '?action=list&filter=unread&page=1', { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { if (d && d.ok && d.items && d.items.length) toast(d.items[0].title); })
+      .catch(function () {});
+  }
+
+  function loop() {
+    fetch(api + '?action=wait&latest=' + latest + '&unread=' + unread, { credentials: 'same-origin', cache: 'no-store' })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(); })
+      .then(function (d) {
+        if (!d || !d.ok) { setTimeout(loop, 5000); return; }
+        var first = latest === -1;
+        var gotNew = !first && d.latest_id > latest;
+        latest = d.latest_id; unread = d.unread; fails = 0;
+        setBadges(unread);
+        if (!first) window.dispatchEvent(new CustomEvent('inbox:update', { detail: d }));
+        if (gotNew) announceNew();
+        loop();
+      })
+      .catch(function () { fails++; setTimeout(loop, Math.min(30000, 2000 * fails)); });
+  }
+  loop();
+})();
+</script>
+JS;
     return $html;
 }
 
 /**
  * The inbox itself. $mode = 'user' (dashboard.php?view=inbox) or
  * 'admin' (admin/dashboard.php?tab=inbox). Data loads through
- * inbox-api.php so the list stays live without page reloads.
+ * inbox-api.php; the list refreshes whenever the realtime poller fires
+ * the "inbox:update" event.
  */
 function inbox_render_panel(string $mode = 'user'): void
 {
@@ -576,7 +631,7 @@ function inbox_render_panel(string $mode = 'user'): void
   var state = { filter: 'all', page: 1, hasMore: false, items: [], unread: 0, latest: 0, cats: {} };
 
   function qs(o) { return Object.keys(o).map(function (k) { return encodeURIComponent(k) + '=' + encodeURIComponent(o[k]); }).join('&'); }
-  function get(o) { return fetch(API + '?' + qs(o), { credentials: 'same-origin' }).then(function (r) { return r.json(); }); }
+  function get(o) { return fetch(API + '?' + qs(o), { credentials: 'same-origin', cache: 'no-store' }).then(function (r) { return r.json(); }); }
   function post(o) {
     o.csrf_token = CSRF;
     return fetch(API, { method: 'POST', credentials: 'same-origin', keepalive: true, headers: { 'Content-Type': 'application/x-www-form-urlencoded' }, body: qs(o) }).then(function (r) { return r.json(); });
@@ -721,12 +776,9 @@ function inbox_render_panel(string $mode = 'user'): void
     post({ action: 'clear_read' }).then(function (d) { absorb(d); load(true, true); });
   });
 
-  setInterval(function () {
-    if (document.hidden) return;
-    get({ action: 'count' }).then(function (d) {
-      if (d && d.ok && (d.latest_id !== state.latest || d.unread !== state.unread)) load(true, true);
-    }).catch(function () {});
-  }, 20000);
+  // Realtime: the shared long-poll (see inbox_maintenance_banner) fires this
+  // whenever a message arrives or the unread count changes anywhere.
+  window.addEventListener('inbox:update', function () { load(true, true); });
 
   renderChips();
   load(true);

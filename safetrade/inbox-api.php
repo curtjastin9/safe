@@ -8,6 +8,7 @@ require_once __DIR__ . '/config/config.php';
  *
  *   GET  ?action=list&filter=all|unread|trade|announcement|update|maintenance|account&page=1
  *   GET  ?action=count
+ *   GET  ?action=wait&latest=<id>&unread=<n>   (long poll, up to ~25s)
  *   POST action=read|unread|delete (id) · read_all · clear_read  (+ csrf_token)
  *
  * Every query is scoped to the logged-in user's own user_id, so nobody
@@ -48,6 +49,25 @@ function inbox_api_reply(int $uid, array $extra = []): never
 try {
     if (!$isPost) {
         if ($action === 'count') {
+            inbox_api_reply($uid);
+        }
+
+        if ($action === 'wait') {
+            // Long poll: hold the request until something changes (or ~25s pass).
+            // Release the session lock first, otherwise every other page
+            // request from this user would queue behind this one.
+            session_write_close();
+            set_time_limit(40);
+            $sinceLatest = (int) ($_GET['latest'] ?? -1);
+            $sinceUnread = (int) ($_GET['unread'] ?? -1);
+            $deadline    = time() + 25;
+            do {
+                $s = inbox_summary($uid);
+                if ($s['latest_id'] !== $sinceLatest || $s['unread'] !== $sinceUnread) {
+                    break;
+                }
+                sleep(2);
+            } while (time() < $deadline && !connection_aborted());
             inbox_api_reply($uid);
         }
 
