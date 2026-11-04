@@ -2532,8 +2532,16 @@ a{color:inherit;text-decoration:none;}
       <?= nav_link('profile', 'My Profile', $view, '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>') ?>
     </nav>
     <div class="side-foot" id="side-foot">
-      Signed in as<br><strong style="color:var(--cream);"><?= e($fullName) ?></strong><br>
-      <a href="auth/logout.php">Log out</a>
+      <div class="sf-label">Signed in as</div>
+      <div class="sf-name"><?= e($fullName) ?></div>
+      <?php if ($verified): ?>
+        <span class="sf-badge ok">✓ ID verified</span>
+      <?php else: ?>
+        <span class="sf-badge">Not yet verified</span>
+      <?php endif; ?>
+      <div class="sf-rating"><?= star_rating_html($avgRating, $ratingCount) ?></div>
+      <a class="sf-profile" href="?view=profile">View full profile →</a>
+      <a class="sf-logout" href="auth/logout.php">Log out</a>
     </div>
   </aside>
 
@@ -4574,17 +4582,6 @@ a{color:inherit;text-decoration:none;}
     <?php endif; ?>
   </main>
 
-  <aside class="side-right">
-    <div class="rcard" style="text-align:center;">
-      <a href="?view=profile" style="text-decoration:none;color:inherit;display:block;">
-        <div style="width:54px;height:54px;border-radius:50%;margin:0 auto 8px;background:var(--brand);color:var(--cream);display:flex;align-items:center;justify-content:center;font-family:'Fraunces',serif;font-weight:600;"><?= e($initials) ?></div>
-        <h4><?= e($fullName) ?></h4>
-      </a>
-      <?php if ($verified): ?><span class="pill ok">ID verified</span><?php else: ?><span class="pill">Not yet verified</span><?php endif; ?>
-      <?= star_rating_html($avgRating, $ratingCount) ?>
-      <div style="margin-top:10px;"><a href="?view=profile" style="font-size:12px;font-weight:600;color:var(--brand);">View full profile →</a></div>
-    </div>
-  </aside>
 </div>
 
 <script>
