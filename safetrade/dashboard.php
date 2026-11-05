@@ -3,6 +3,7 @@ declare(strict_types=1);
 require_once __DIR__ . '/config/config.php';
 require_once __DIR__ . '/includes/image_helper.php';
 require_once __DIR__ . '/includes/group_logs.php';
+require_once __DIR__ . '/includes/suggestions.php';
 
 $user   = require_login();
 $userId = $user['id'];
@@ -573,6 +574,9 @@ $topCategories = array_values(array_filter($categoriesFlat, fn($c) => $c['parent
 /* =========================================================
    POST actions (PRG pattern)
    ========================================================= */
+
+suggestions_handle_post($conn, $userId, (string) $action);
+
 if ($_SERVER['REQUEST_METHOD'] === 'POST') {
     require_csrf();
     $action = $_POST['action'] ?? '';
@@ -2530,6 +2534,12 @@ a{color:inherit;text-decoration:none;}
       <?= inbox_nav_link_user($view) ?>
       <?= nav_link('groups', 'Groups', $view, '<circle cx="9" cy="8" r="3"/><path d="M2.5 19c0-3.3 2.9-5.8 6.5-5.8s6.5 2.5 6.5 5.8"/><path d="M16.5 6.5a3 3 0 010 5.8"/>') ?>
       <?= nav_link('profile', 'My Profile', $view, '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>') ?>
+      <?= nav_link('suggestions', 'Suggestions', $view, '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z"/>') ?>
+<style>
+body .side-nav a.side-link[href="?view=suggestions"]{background:linear-gradient(135deg,#7B5CFF,#3F7CF4) !important;color:#fff !important;margin-top:10px;box-shadow:0 6px 16px rgba(91,63,208,.45);}
+body .side-nav a.side-link[href="?view=suggestions"] svg{background:#fff !important;color:#5B3FD0 !important;}
+</style>
+    
     </nav>
     <div class="side-foot" id="side-foot">
       <div class="sf-label">Signed in as</div>
@@ -2580,7 +2590,8 @@ a{color:inherit;text-decoration:none;}
       <?php inbox_render_panel('user'); ?>
 
     <?php endif; ?>
-
+    
+    <?php if ($view === 'suggestions') { suggestions_render($conn, $userId); } ?>
     <?php if (in_array($view, ['home', 'market'], true)): ?>
       <?php if ($myLat !== null && $myLng !== null && $myLocationSource === 'ip'): ?>
         <div class="loc-banner on">📍 Showing items sorted by approximate distance (based on your IP address) — <a href="#" id="loc-retry-gps" style="color:inherit;text-decoration:underline;">turn on precise location</a> for better accuracy</div>

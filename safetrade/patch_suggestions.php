@@ -1,59 +1,77 @@
 <?php
 /**
- * patch_suggestions.php — one-shot patcher. Open it once in the browser:
+ * patch_suggestions.php — one-shot patcher.
+ * Put it in safetrade/ (next to dashboard.php) and open once:
  *   http://localhost/safetrade/patch_suggestions.php
- * Backs up dashboard.php to dashboard.php.bak2, adds the "Suggestions &
- * Feedback" sidebar link (below My Profile), the page, and the POST handler.
+ * It wires the Suggestions feature into the user dashboard, the admin
+ * dashboard sidebar, and admin/partials.php (backups saved as .bak2).
  * DELETE THIS FILE afterwards.
+ *
+ * Before running, make sure these two files are in place:
+ *   includes/suggestions.php   (the first file: sg_ensure / suggestions_render)
+ *   admin/suggestions.php      (the second file: the admin page)
  */
 header('Content-Type: text/plain; charset=utf-8');
 
-$file = __DIR__ . '/dashboard.php';
-if (!is_file($file)) { exit("dashboard.php not found next to this script.\n"); }
-if (!is_file(__DIR__ . '/includes/suggestions.php')) { exit("Missing includes/suggestions.php — copy it into includes/ first.\n"); }
+foreach (['includes/suggestions.php', 'admin/suggestions.php', 'dashboard.php', 'admin/dashboard.php', 'admin/partials.php'] as $need) {
+    if (!is_file(__DIR__ . '/' . $need)) exit("Missing $need\n");
+}
 
-$src = file_get_contents($file);
-if (strpos($src, 'suggestions.php') !== false) { exit("Already patched — nothing to do.\n"); }
-
+$ICON = '<path d="M9 18h6M10 21h4"/><path d="M12 3a6 6 0 00-4 10.5c.7.7 1 1.5 1 2.5h6c0-1 .3-1.8 1-2.5A6 6 0 0012 3z"/>';
 $log = [];
-$ok  = true;
 
-function once(string $src, string $anchor): bool { return substr_count($src, $anchor) === 1; }
+/* ---------------- 1. user dashboard.php ---------------- */
+$f = __DIR__ . '/dashboard.php';
+$s = file_get_contents($f);
+if (strpos($s, 'includes/suggestions.php') !== false) {
+    $log[] = 'dashboard.php: already patched';
+} else {
+    $ok = true;
+    $a = "require_once __DIR__ . '/includes/group_logs.php';";
+    if (substr_count($s, $a) === 1) $s = str_replace($a, $a . "\nrequire_once __DIR__ . '/includes/suggestions.php';", $s);
+    else { $log[] = 'dashboard.php FAILED: group_logs require anchor'; $ok = false; }
 
-/* 1. require the include */
-$a = "require_once __DIR__ . '/includes/group_logs.php';";
-if (once($src, $a)) {
-    $src = str_replace($a, $a . "\nrequire_once __DIR__ . '/includes/suggestions.php';", $src);
-    $log[] = 'ok      1 require include';
-} else { $log[] = 'FAILED  1 require anchor (group_logs require not found exactly once)'; $ok = false; }
+    $a = 'switch ($action) {';
+    if ($ok && substr_count($s, $a) === 1) $s = str_replace($a, "suggestions_handle_post(\$conn, \$userId, (string) \$action);\n\n    " . $a, $s);
+    elseif ($ok) { $log[] = 'dashboard.php FAILED: switch anchor (' . substr_count($s, $a) . ')'; $ok = false; }
 
-/* 2. POST handler, right before the action switch */
-$a = '    switch ($action) {';
-if (once($src, $a)) {
-    $src = str_replace($a, "    suggestions_handle_post(\$conn, \$userId, \$action);\n\n" . $a, $src);
-    $log[] = 'ok      2 POST handler';
-} else { $log[] = 'FAILED  2 switch anchor (found ' . substr_count($src, $a) . ' times)'; $ok = false; }
+    $a = '<?= inbox_nav_link_user($view) ?>';
+    if ($ok && substr_count($s, $a) === 1) $s = str_replace($a, $a . "\n      <?= nav_link('suggestions', 'Suggestions', \$view, '" . $ICON . "') ?>", $s);
+    elseif ($ok) { $log[] = 'dashboard.php FAILED: sidebar anchor'; $ok = false; }
 
-/* 3. sidebar link below "My Profile" */
-$icon = '<path d="M21 15a2 2 0 01-2 2H8l-5 4V5a2 2 0 012-2h14a2 2 0 012 2z"/><path d="M12 7v5M12 15h.01"/>';
-if (preg_match("/^[ \\t]*<\\?= nav_link\\('profile'.*\\?>[ \\t]*\\R/m", $src, $m, PREG_OFFSET_CAPTURE) && substr_count($src, "nav_link('profile'") === 1) {
-    $end  = $m[0][1] + strlen($m[0][0]);
-    $line = "      <?= nav_link('suggestions', 'Suggestions & Feedback', \$view, '" . $icon . "') ?>\n";
-    $src  = substr($src, 0, $end) . $line . substr($src, $end);
-    $log[] = 'ok      3 sidebar link';
-} else { $log[] = 'FAILED  3 nav_link profile line not found'; $ok = false; }
+    $a = "<?php if (in_array(\$view, ['home', 'market'], true)): ?>";
+    if ($ok && substr_count($s, $a) === 1) $s = str_replace($a, "<?php if (\$view === 'suggestions') { suggestions_render(\$conn, \$userId); } ?>\n\n    " . $a, $s);
+    elseif ($ok) { $log[] = 'dashboard.php FAILED: view anchor'; $ok = false; }
 
-/* 4. the page itself, right after the maintenance banner */
-$a = "<?= inbox_maintenance_banner('user') ?>";
-if (once($src, $a)) {
-    $src = str_replace($a, $a . "\n\n    <?php if (\$view === 'suggestions') { suggestions_render(\$conn, \$userId); } ?>", $src);
-    $log[] = 'ok      4 page render';
-} else { $log[] = 'FAILED  4 banner anchor'; $ok = false; }
+    if ($ok) { copy($f, $f . '.bak2'); file_put_contents($f, $s); $log[] = 'dashboard.php: ok'; }
+}
 
-echo implode("\n", $log) . "\n\n";
+/* ---------------- 2. admin/dashboard.php sidebar ---------------- */
+$f = __DIR__ . '/admin/dashboard.php';
+$s = file_get_contents($f);
+if (strpos($s, 'suggestions.php') !== false) {
+    $log[] = 'admin/dashboard.php: already patched';
+} elseif (preg_match('/^[^\n]*tab_link\(\'groups\'[^\n]*$/m', $s, $m)) {
+    $link = '      <a class="admin-link" href="suggestions.php" title="Suggestions"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">' . $ICON . '</svg><span>Suggestions</span></a>';
+    $s = str_replace($m[0], $m[0] . "\n" . $link, $s);
+    copy($f, $f . '.bak2'); file_put_contents($f, $s);
+    $log[] = 'admin/dashboard.php: ok';
+} else {
+    $log[] = 'admin/dashboard.php FAILED: groups tab_link line not found';
+}
 
-if (!$ok) { echo "Nothing was written — dashboard.php is unchanged. Send me the FAILED lines.\n"; exit; }
+/* ---------------- 3. admin/partials.php sidebar ---------------- */
+$f = __DIR__ . '/admin/partials.php';
+$s = file_get_contents($f);
+if (strpos($s, "'suggestions'") !== false) {
+    $log[] = 'admin/partials.php: already patched';
+} elseif (preg_match('/^[^\n]*\'groups\'\s*=>\s*\[[^\n]*$/m', $s, $m)) {
+    $entry = "        'suggestions'    => ['Suggestions',     'suggestions.php',     '" . $ICON . "'],";
+    $s = str_replace($m[0], $m[0] . "\n" . $entry, $s);
+    copy($f, $f . '.bak2'); file_put_contents($f, $s);
+    $log[] = 'admin/partials.php: ok';
+} else {
+    $log[] = 'admin/partials.php FAILED: groups entry not found';
+}
 
-copy($file, $file . '.bak2');
-file_put_contents($file, $src);
-echo "Done. Backup saved as dashboard.php.bak2.\nNow delete patch_suggestions.php.\n";
+echo implode("\n", $log) . "\n\nHard refresh (Ctrl+F5) the dashboard and admin panel, then delete patch_suggestions.php.\n";
