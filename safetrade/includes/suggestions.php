@@ -4,7 +4,8 @@ declare(strict_types=1);
 /**
  * ---------------------------------------------------------------------
  * Suggestions & Feedback — members post ideas / bug reports, everyone
- * else can comment. Lives at dashboard.php?view=suggestions.
+ * else can comment and like. Lives at dashboard.php?view=suggestions.
+ * Admins moderate from admin/suggestions.php.
  *
  * Tables are created automatically (CREATE TABLE IF NOT EXISTS) and use
  * NO foreign keys, so deleting a user can never be blocked by these rows.
@@ -38,6 +39,14 @@ function sg_ensure(mysqli $c): void
             PRIMARY KEY (id),
             KEY idx_suggestion (suggestion_id, id)
         ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
+        $c->query("CREATE TABLE IF NOT EXISTS suggestion_likes (
+            id INT NOT NULL AUTO_INCREMENT,
+            suggestion_id INT NOT NULL,
+            user_id INT NOT NULL,
+            created_at TIMESTAMP NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            PRIMARY KEY (id),
+            UNIQUE KEY uniq_sg_like (suggestion_id, user_id)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     } catch (Throwable $e) {
         error_log('[SafeTrade] sg_ensure failed: ' . $e->getMessage());
     }
@@ -70,7 +79,39 @@ function suggestions_handle_post(mysqli $c, int $uid, string $action): void
                 $newId = (int) $c->insert_id;
                 $st->close();
                 audit_log($uid, 'user.suggestion.posted', 'suggestion', $newId);
+                if (function_exists('inbox_push_staff')) {
+                    inbox_push_staff('account', 'New suggestion: ' . mb_substr($title, 0, 80),
+                        'A member posted a new ' . strtolower($cat) . '.', '/admin/suggestions.php', $newId, 'staff_suggestion', [$uid]);
+                }
                 flash_set('success', 'Thanks! Your suggestion is posted.');
+                break;
+            }
+
+            case 'sg_like': {
+                $sid = (int) ($_POST['suggestion_id'] ?? 0);
+                if ($sid <= 0) break;
+                $st = $c->prepare('SELECT id FROM suggestions WHERE id = ? LIMIT 1');
+                $st->bind_param('i', $sid);
+                $st->execute();
+                $exists = $st->get_result()->fetch_assoc();
+                $st->close();
+                if (!$exists) break;
+
+                $st = $c->prepare('SELECT id FROM suggestion_likes WHERE suggestion_id = ? AND user_id = ? LIMIT 1');
+                $st->bind_param('ii', $sid, $uid);
+                $st->execute();
+                $liked = $st->get_result()->fetch_assoc();
+                $st->close();
+
+                if ($liked) {
+                    $d = $c->prepare('DELETE FROM suggestion_likes WHERE id = ?');
+                    $lid = (int) $liked['id'];
+                    $d->bind_param('i', $lid); $d->execute(); $d->close();
+                } else {
+                    $i = $c->prepare('INSERT IGNORE INTO suggestion_likes (suggestion_id, user_id) VALUES (?,?)');
+                    $i->bind_param('ii', $sid, $uid); $i->execute(); $i->close();
+                }
+                $back .= '#sg-' . $sid;
                 break;
             }
 
@@ -113,6 +154,8 @@ function suggestions_handle_post(mysqli $c, int $uid, string $action): void
                 if ($own) {
                     $d = $c->prepare('DELETE FROM suggestion_comments WHERE suggestion_id = ?');
                     $d->bind_param('i', $sid); $d->execute(); $d->close();
+                    $d = $c->prepare('DELETE FROM suggestion_likes WHERE suggestion_id = ?');
+                    $d->bind_param('i', $sid); $d->execute(); $d->close();
                     $d = $c->prepare('DELETE FROM suggestions WHERE id = ? AND user_id = ?');
                     $d->bind_param('ii', $sid, $uid); $d->execute(); $d->close();
                     flash_set('success', 'Suggestion deleted.');
@@ -143,11 +186,15 @@ function suggestions_render(mysqli $c, int $uid): void
     sg_ensure($c);
     $filter = in_array($_GET['cat'] ?? '', SG_CATEGORIES, true) ? $_GET['cat'] : '';
 
-    $sql = 'SELECT s.*, u.first_name, u.last_name FROM suggestions s JOIN users u ON u.id = s.user_id'
+    $sql = 'SELECT s.*, u.first_name, u.last_name,
+                   (SELECT COUNT(*) FROM suggestion_likes l WHERE l.suggestion_id = s.id) AS like_count,
+                   (SELECT COUNT(*) FROM suggestion_likes l WHERE l.suggestion_id = s.id AND l.user_id = ?) AS liked_by_me
+            FROM suggestions s LEFT JOIN users u ON u.id = s.user_id'
          . ($filter !== '' ? ' WHERE s.category = ?' : '')
          . ' ORDER BY s.created_at DESC, s.id DESC LIMIT 50';
     $st = $c->prepare($sql);
-    if ($filter !== '') $st->bind_param('s', $filter);
+    if ($filter !== '') $st->bind_param('is', $uid, $filter);
+    else                $st->bind_param('i', $uid);
     $st->execute();
     $items = $st->get_result()->fetch_all(MYSQLI_ASSOC);
     $st->close();
@@ -157,7 +204,7 @@ function suggestions_render(mysqli $c, int $uid): void
         $ids = implode(',', array_map(fn($r) => (int) $r['id'], $items));
         $res = $c->query(
             "SELECT c.*, u.first_name, u.last_name FROM suggestion_comments c
-             JOIN users u ON u.id = c.user_id WHERE c.suggestion_id IN ($ids) ORDER BY c.id ASC"
+             LEFT JOIN users u ON u.id = c.user_id WHERE c.suggestion_id IN ($ids) ORDER BY c.id ASC"
         );
         while ($r = $res->fetch_assoc()) $comments[(int) $r['suggestion_id']][] = $r;
     }
@@ -178,6 +225,10 @@ function suggestions_render(mysqli $c, int $uid): void
 .sg-tag.t-Other{background:var(--line);color:var(--ink-soft);}
 .sg-title{font-family:'Fraunces',serif;font-size:17px;font-weight:600;}
 .sg-body{font-size:14px;line-height:1.65;color:var(--ink-soft);margin-top:6px;white-space:pre-line;word-break:break-word;}
+.sg-actions{display:flex;gap:8px;margin-top:12px;}
+.sg-like{border:1.5px solid var(--line-strong);background:var(--cream);color:var(--ink);border-radius:999px;padding:6px 14px;font:inherit;font-size:12.5px;font-weight:600;cursor:pointer;transition:all .15s ease;}
+.sg-like:hover{border-color:var(--brand);color:var(--brand);background:var(--brand-light);}
+.sg-like.on{border-color:var(--brand);background:var(--brand-light);color:var(--brand-dark);}
 .sg-comments{margin-top:14px;padding-top:12px;border-top:1px solid var(--line);}
 .sg-comments summary{cursor:pointer;font-size:12.5px;font-weight:700;color:var(--brand);list-style:none;}
 .sg-comments summary::-webkit-details-marker{display:none;}
@@ -193,7 +244,7 @@ function suggestions_render(mysqli $c, int $uid): void
 
 <div class="sg-wrap">
   <div class="row-head"><h2>Suggestions &amp; Feedback</h2></div>
-  <p style="color:var(--ink-soft);font-size:13px;margin:-6px 0 18px;">Got an idea or found a problem? Share it here — other members can comment, and our team reads everything.</p>
+  <p style="color:var(--ink-soft);font-size:13px;margin:-6px 0 18px;">Got an idea or found a problem? Share it here — other members can like and comment, and our team reads everything.</p>
 
   <form method="post" class="sg-composer"><?= csrf_field() ?>
     <input type="hidden" name="action" value="sg_add">
@@ -221,13 +272,18 @@ function suggestions_render(mysqli $c, int $uid): void
   <?php endif; ?>
 
   <?php foreach ($items as $s):
-    $sid = (int) $s['id'];
-    $cm  = $comments[$sid] ?? [];
+    $sid   = (int) $s['id'];
+    $cm    = $comments[$sid] ?? [];
+    $fn    = (string) ($s['first_name'] ?? '');
+    $ln    = (string) ($s['last_name'] ?? '');
+    $name  = trim($fn . ' ' . $ln) ?: 'Former member';
+    $liked = (int) $s['liked_by_me'] > 0;
+    $likes = (int) $s['like_count'];
     $tagClass = 't-' . strtok($s['category'], ' '); ?>
     <div class="sg-card" id="sg-<?= $sid ?>">
       <div class="sg-top">
-        <span class="p-avatar hp-trigger" data-uid="<?= (int) $s['user_id'] ?>"><?= e(strtoupper(substr($s['first_name'], 0, 1) . substr($s['last_name'], 0, 1))) ?></span>
-        <div class="who"><strong class="hp-trigger" data-uid="<?= (int) $s['user_id'] ?>"><?= e($s['first_name'] . ' ' . $s['last_name']) ?></strong><span><?= e(time_ago($s['created_at'])) ?></span></div>
+        <span class="p-avatar hp-trigger" data-uid="<?= (int) $s['user_id'] ?>"><?= e(strtoupper(substr($fn, 0, 1) . substr($ln, 0, 1)) ?: '?') ?></span>
+        <div class="who"><strong class="hp-trigger" data-uid="<?= (int) $s['user_id'] ?>"><?= e($name) ?></strong><span><?= e(time_ago($s['created_at'])) ?></span></div>
         <span class="sg-tag <?= e($tagClass) ?>"><?= e($s['category']) ?></span>
         <?php if ((int) $s['user_id'] === $uid): ?>
           <form method="post" onsubmit="return confirm('Delete this suggestion and its comments?');" style="margin:0;"><?= csrf_field() ?>
@@ -239,11 +295,20 @@ function suggestions_render(mysqli $c, int $uid): void
       <div class="sg-title"><?= e($s['title']) ?></div>
       <div class="sg-body"><?= e($s['body']) ?></div>
 
+      <div class="sg-actions">
+        <form method="post" style="margin:0;"><?= csrf_field() ?>
+          <input type="hidden" name="action" value="sg_like">
+          <input type="hidden" name="suggestion_id" value="<?= $sid ?>">
+          <button class="sg-like<?= $liked ? ' on' : '' ?>" type="submit"><?= $liked ? '❤️' : '🤍' ?> Like<?= $likes > 0 ? ' (' . $likes . ')' : '' ?></button>
+        </form>
+      </div>
+
       <details class="sg-comments"<?= $cm ? ' open' : '' ?>>
         <summary>💬 <?= count($cm) ?> comment<?= count($cm) === 1 ? '' : 's' ?></summary>
-        <?php foreach ($cm as $m): ?>
+        <?php foreach ($cm as $m):
+          $mName = trim(((string) ($m['first_name'] ?? '')) . ' ' . ((string) ($m['last_name'] ?? ''))) ?: 'Former member'; ?>
           <div class="sg-comment">
-            <div class="txt"><strong><?= e($m['first_name'] . ' ' . $m['last_name']) ?></strong><span class="tm"><?= e(time_ago($m['created_at'])) ?></span><br><?= e($m['body']) ?></div>
+            <div class="txt"><strong><?= e($mName) ?></strong><span class="tm"><?= e(time_ago($m['created_at'])) ?></span><br><?= e($m['body']) ?></div>
             <?php if ((int) $m['user_id'] === $uid): ?>
               <form method="post" style="margin:0;"><?= csrf_field() ?>
                 <input type="hidden" name="action" value="sg_delete_comment">
